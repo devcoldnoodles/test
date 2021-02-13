@@ -23,6 +23,7 @@
             constructor() {
                 this.location = vec3(0, 0, 0);
                 this.size = vec3(0, 0, 0);
+                this.vertices = [];
                 this.angle = vec3(0, 0, 0);
             }
 
@@ -37,40 +38,74 @@
             temp.location.x = lx;
             temp.location.y = ly;
             temp.location.z = lz;
-            temp.size.x = sx;
-            temp.size.y = sy;
-            temp.size.z = sz;
+
+            temp.vertices.push(vec3(-sx / 2, -sy / 2, -sz / 2));
+            temp.vertices.push(vec3(sx / 2, -sy / 2, -sz / 2));
+            temp.vertices.push(vec3(sx / 2, -sy / 2, sz / 2));
+            temp.vertices.push(vec3(-sx / 2, -sy / 2, sz / 2));
+            temp.vertices.push(vec3(-sx / 2, sy / 2, -sz / 2));
+            temp.vertices.push(vec3(sx / 2, sy / 2, -sz / 2));
+            temp.vertices.push(vec3(sx / 2, sy / 2, sz / 2));
+            temp.vertices.push(vec3(-sx / 2, sy / 2, sz / 2));
             return temp;
         }
+        
+        function projection(camera, vertex) {
+            return vec2((vertex.x - camera.location.x) / (vertex.z - camera.location.z) + canvas.width / 2,
+                (vertex.y - camera.location.y) / (vertex.z - camera.location.z) + canvas.height / 2);
+        }
 
-        function getVertexCube(ic) {
+        function projection2(camera, object) {
+            let x = object.location.x;
+            let y = object.location.y;
+            let z = object.location.z;
+            let width = object.size.x;
+            let height = object.size.y;
+            let depth = object.size.z;
+            let angleX = object.angle.x;
+            let angleY = object.angle.y;
+            let angleZ = object.angle.z;
+            let viewport = camera.location;
+
+            let vertices = [];
+            for (var index = 0; index < object.vertices.length; ++index) {
+                let vertex = object.vertices[index];
+                vertices.push(vec2((vertex.x - viewport.x) / (vertex.z - viewport.z) + canvas.width / 2,
+                (vertex.y - viewport.y) / (vertex.z - viewport.z) + canvas.height / 2));
+            }
+            return vertices;
+        }
+
+        function getVertexCube(camera, ic) {
             let x = ic.location.x;
             let y = ic.location.y;
             let z = ic.location.z;
             let width = ic.size.x;
             let height = ic.size.y;
             let depth = ic.size.z;
+            let angleX = ic.angle.x;
+            let angleY = ic.angle.y;
+            let angleZ = ic.angle.z;
             return [
-                vec3(x - width / 2, y - height / 2, z - depth / 2),
-                vec3(x - width / 2, y - height / 2, z + depth / 2),
-                vec3(x + width / 2, y - height / 2, z + depth / 2),
-                vec3(x + width / 2, y - height / 2, z - depth / 2),
-                vec3(x + width / 2, y + height / 2, z - depth / 2),
-                vec3(x + width / 2, y + height / 2, z + depth / 2),
-                vec3(x - width / 2, y + height / 2, z + depth / 2),
-                vec3(x - width / 2, y + height / 2, z - depth / 2)];
+                projection(camera, vec3(x - width / 2 * Math.cos(ic.angle.y), y - height / 2, z - depth / 2)),
+                projection(camera, vec3(x + width / 2 * Math.cos(ic.angle.y), y - height / 2, z - depth / 2)),
+                projection(camera, vec3(x + width / 2 * Math.cos(ic.angle.y), y - height / 2, z + depth / 2)),
+                projection(camera, vec3(x - width / 2 * Math.cos(ic.angle.y), y - height / 2, z + depth / 2)),
+                projection(camera, vec3(x - width / 2 * Math.cos(ic.angle.y), y + height / 2, z - depth / 2)),
+                projection(camera, vec3(x + width / 2 * Math.cos(ic.angle.y), y + height / 2, z - depth / 2)),
+                projection(camera, vec3(x + width / 2 * Math.cos(ic.angle.y), y + height / 2, z + depth / 2)),
+                projection(camera, vec3(x - width / 2 * Math.cos(ic.angle.y), y + height / 2, z + depth / 2))];
         }
 
-        function projection(camera, vertex) {
-            return vec2((vertex.x - camera.location.x) / (vertex.z - camera.location.z) + canvas.width / 2,
-                (vertex.y - camera.location.y) / (vertex.z - camera.location.z) + canvas.height / 2);
+        function isPrjectableObject(obj) {
+            return obj.location.z - camera.location.z > 0;
         }
 
         let canvas = document.getElementById("view");
         let context = canvas.getContext("2d");
 
         let camera = new object();
-        let cubes = [cube(0, 0, 0.1, 20, 20, 20)];
+        let cubes = [cube(0, 0, 2, 200, 200, 1)];
 
         if (context != null) {
             requestAnimationFrame(function () {
@@ -78,16 +113,38 @@
                 context.fillRect(0, 0, canvas.width, canvas.height);
                 context.strokeStyle = "#000";
                 for (var count = 0; count < cubes.length; ++count) {
-                    let vertexs = getVertexCube(cubes[count]);
+
+                    cubes[count].angle.y += 0.01;
+
+                    if (isPrjectableObject(cubes[count]) == false)
+                        continue;
+
+                    let vertexs = projection2(camera, cubes[count]);
                     context.beginPath();
-                    for (var index = 0; index < vertexs.length; ++index) {
-                        let realPoint = projection(camera, vertexs[index]);
-                        // console.log(realPoint);
-                        if (index == 0)
-                            context.moveTo(realPoint.x, realPoint.y);
-                        else
-                            context.lineTo(realPoint.x, realPoint.y);
+                    context.moveTo(vertexs[0].x, vertexs[0].y);
+                    context.lineTo(vertexs[1].x, vertexs[1].y);
+                    context.lineTo(vertexs[2].x, vertexs[2].y);
+                    context.lineTo(vertexs[3].x, vertexs[3].y);
+                    context.lineTo(vertexs[0].x, vertexs[0].y);
+                    context.moveTo(vertexs[4].x, vertexs[4].y);
+                    context.lineTo(vertexs[5].x, vertexs[5].y);
+                    context.lineTo(vertexs[6].x, vertexs[6].y);
+                    context.lineTo(vertexs[7].x, vertexs[7].y);
+                    context.lineTo(vertexs[4].x, vertexs[4].y);
+
+                    // for (var index = 4; index < 8; ++index) {
+                    //     if (index == 4)
+                    //         context.moveTo(vertexs[index].x, vertexs[index].y);
+                    //     else
+                    //         context.lineTo(vertexs[index].x, vertexs[index].y);
+                    // }
+                    // context.lineTo(vertexs[4].x, vertexs[4].y);
+                    
+                    for (var index = 0; index < 4; ++index) {
+                        context.moveTo(vertexs[index].x, vertexs[index].y);
+                        context.lineTo(vertexs[index + 4].x, vertexs[index + 4].y);
                     }
+
                     context.closePath();
                     context.stroke();
                 }
@@ -112,10 +169,10 @@
                         camera.location.z -= 0.1;
                         break;
                     case "a":
-                        camera.location.x -= 0.1;
+                        camera.location.x -= 1;
                         break;
                     case "d":
-                        camera.location.x += 0.1;
+                        camera.location.x += 1;
                         break;
                 }
             });
