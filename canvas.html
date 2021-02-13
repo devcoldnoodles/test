@@ -1,0 +1,1717 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title> </title>
+  <meta charset="utf-8">
+  <style type="text/css">
+    body {
+      margin: 0px;
+      overflow: hidden;
+    }
+  </style>
+  <script src="engine.js">
+  </script>
+  <script language="javaScript" defer>
+    var Interface =
+    {
+      Rect: function (x, y, width, height) {
+        this.location = new vec2(x, y);
+        this.size = new vec2(width, height);
+        this.zIndex = 2;
+        this.visible = true;
+        this.active = true;
+        this.base = null;
+
+        this.isclick = function (x, y) {
+          var location = subordinativeLocation(this);
+          if (x >= location.x && x <= location.x + this.size.x && y >= location.y && y <= location.y + this.size.y)
+            return true;
+          return false;
+        }
+      },
+      Form: function (x, y, width, height, bgColor, option) {
+        this.__proto__ = new Interface.Rect(x, y, width, height);
+        this.component = [];
+        this.bgColor = bgColor || "#B0B0B0";
+        this.focus = false;
+        this.zIndex = 3;
+
+        this.paint = function (ctx) {
+          var location = subordinativeLocation(this);
+          ctx.fillStyle = this.bgColor;
+          ctx.fillRect(location.x, location.y, this.size.x, this.size.y);
+        }
+        this.drag = function (x, y) {
+          if (mouse[mouse.middle])
+            this.location.add(x, y);
+        }
+      },
+      bar: function (x, y, width, height, range, comment, touchable, colorRef) {
+        this.__proto__ = new Interface.Rect(x, y, width, height);
+        this.range = range || null;
+        this.comment = comment || "";
+        this.class = "bar";
+        this.touchable = touchable ? true : false;
+        this.change = null;
+        this.font = "25px 돋움";
+        var colorRef = colorRef || new color(90, 90, 90);
+
+        this.update = function () {
+          //colorRef.R.value += Math.round(Math.random()*3)-1;
+          //colorRef.G.value += Math.round(Math.random()*3)-1;
+          //colorRef.B.value += Math.round(Math.random()*3)-1;
+        }
+
+        this.paint = function (ctx) {
+          var location = subordinativeLocation(this);
+          ctx.strokeStyle = "#000000";
+          ctx.fillStyle = "#D0D0D0";
+          ctx.strokeRect(location.x, location.y, this.size.x, this.size.y);
+          ctx.fillRect(location.x, location.y, this.size.x, this.size.y);
+          ctx.fillStyle = colorRef.value;
+          ctx.strokeRect(location.x, location.y, (this.range.value - this.range.min) / (this.range.max - this.range.min) * this.size.x - 1, this.size.y);
+          ctx.fillRect(location.x, location.y, (this.range.value - this.range.min) / (this.range.max - this.range.min) * this.size.x - 1, this.size.y)
+          ctx.fillStyle = "#FFFFFF";
+          ctx.font = this.font;
+          ctx.fillText(this.comment + "(" + Math.floor(this.range.value) + ")", location.x + this.size.x / (2 + this.comment.length), location.y + this.size.y / 1.5);
+        }
+
+        this.click = function (x, y) {
+          if (!this.touchable)
+            return;
+          var location = subordinativeLocation(this);
+          if (mouse[mouse.left]) {
+            this.range.value = (x - location.x) / this.size.x * (this.range.max - this.range.min) + this.range.min;
+            if (this.change != null)
+              this.change();
+          }
+        }
+
+        this.drag = function (x, y) {
+          if (!this.touchable)
+            return;
+          if (mouse[mouse.left]) {
+            var location = subordinativeLocation(this);
+            if (mouse[mouse.left]) {
+              this.range.value = (mouse.x - location.x) / this.size.x * (this.range.max - this.range.min) + this.range.min;
+              if (this.change != null)
+                this.change();
+            }
+          }
+        }
+        return this;
+      },
+      button: function (x, y, width, height, text, baseColor, focusColor, click) {
+        this.__proto__ = new Interface.Rect(x, y, width, height);
+        this.focus = false;
+        this.text = text || "null";
+        this.baseColor = baseColor || "#AAAAAA";
+        this.focusColor = focusColor || "#888888";
+        this.click = click || null;
+
+        this.paint = function (ctx) {
+          var location = subordinativeLocation(this);
+          ctx.fillStyle = this.focus ? this.focusColor : this.baseColor;
+          ctx.strokeStyle = "#FFFFFF"
+          ctx.fillRect(location.x, location.y, this.size.x, this.size.y);
+          ctx.strokeRect(location.x, location.y, this.size.x, this.size.y);
+          ctx.fillStyle = "#000000";
+          ctx.font = "25px 돋움";
+          ctx.fillText(this.text, location.x + this.size.x / 4, location.y + this.size.y / 1.5);
+        }
+        this.enter = function () {
+          this.focus = true;
+        }
+        this.leave = function () {
+          this.focus = false;
+        }
+        return this;
+      },
+      spreadCircle: function (x, y, min_radius, max_radius, delay) {
+        this.__proto__ = new Interface.Rect(x, y, 0, 0);
+        this.min_radius = min_radius || 1;
+        this.current_radius = this.min_radius;
+        this.max_radius = max_radius || 3;
+        this.delay = delay | 1;
+
+        this.update = function () {
+          this.current_radius += this.delay;
+          if (this.current_radius >= this.max_radius) {
+            this.active = false;
+          }
+        }
+        this.paint = function (ctx) {
+          var location = this.location;
+          var radius = this.current_radius;
+          ctx.beginPath();
+          ctx.arc(location.x, location.y, radius, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.strokeStyle = "#11DD99";
+          var temp = ctx.lineWidth;
+          ctx.lineWidth = 5;
+          ctx.stroke();
+          ctx.lineWidth = temp;
+        }
+      }
+    };
+
+    var Collider2D =
+    {
+      Rect: function (x, y, width, height, velocityX, velocityY) {
+        this.location = new vec2(x, y);
+        this.prev = new vec2(x, y);
+        this.size = new vec2(width, height);
+        this.velocity = new vec2(velocityX, velocityY);
+        this.zIndex = 1;
+        this.base = screenInfo;
+        this.visible = true;
+        this.active = true;
+
+        //this.__defineGetter__("Location",function(){return this.location[this.location.length-1];})
+        //this.__defineSetter__("Location",function(value){ this.location.push(value); })
+        Object.defineProperty(this, "median",
+          {
+            get: function () { return new vec2(this.location.x + this.size.x / 2, this.location.y + this.size.y / 2); }
+          });
+        this.angle = function (collider) {
+          return Math.atan2((collider.location.y + collider.size.y / 2) - (this.location.y + this.size.y / 2),
+            (collider.location.x + collider.size.x / 2) - (this.location.x + this.size.x / 2));
+        }
+        this.isclick = function (x, y) {
+          var location = cameraLocation(this);
+          if (x >= location.x && x <= location.x + this.size.x && y >= location.y && y <= location.y + this.size.y)
+            return true;
+          return false;
+        }
+        this.iscollision = function (collider) {
+          var space = new vec2((this.size.x + collider.size.x) / 2, (this.size.y + collider.size.y) / 2);
+          var this_median = this.median;
+          var collider_median = collider.median;
+          var distance = new vec2(this_median.x - collider_median.x, this_median.y - collider_median.y);
+          if (Math.abs(distance.x) <= space.x && Math.abs(distance.y) < space.y)
+            return true;
+          return false;
+        }
+        this.oninsert = function () {
+          var index = colliders.indexOf(this);
+          if (index == -1)
+            colliders.push(this);
+        }
+        this.ondelete = function () {
+          var index = colliders.indexOf(this);
+          if (index > -1)
+            colliders.splice(index, 1);
+        }
+      }
+    };
+    function loadImage() {
+      var temp = new Array();
+      var size = arguments.length;
+      for (var count = 0; count < size; count += 1) {
+        temp[count] = new Image();
+        temp[count].src = arguments[count];
+      }
+      return temp;
+    }
+    function subordinativeLocation(input) {
+      var temp = input.location.clone();
+      while (input.base != null) {
+        input = input.base;
+        temp.add(input.location.x, input.location.y);
+      }
+      return temp;
+    }
+    function cameraLocation(input) {
+      var temp = input.location.clone();
+      while (input.base != null) {
+        input = input.base;
+        temp.sub(input.location);
+      }
+      return temp;
+    }
+    function color(R, G, B) {
+      this.R = new range(0, 255, R);
+      this.G = new range(0, 255, G);
+      this.B = new range(0, 255, B);
+      Object.defineProperty(this, "value",
+        {
+          get: function () { return color.rgb(this.R.value, this.G.value, this.B.value); }
+        });
+      color.rgb = function (r, g, b) {
+        var rHexF = Math.floor(r % 256 / 16);
+        var rHexB = Math.floor(r % 16);
+        var gHexF = Math.floor(g / 16);
+        var gHexB = Math.floor(g % 16);
+        var bHexF = Math.floor(b / 16);
+        var bHexB = Math.floor(b % 16);
+        return "#" + decTohex(rHexF) + decTohex(rHexB) + decTohex(gHexF) + decTohex(gHexB) + decTohex(bHexF) + decTohex(bHexB);
+      }
+      color.decodeColor = function (color) {
+        var table = "0123456789ABCDEF";
+        var ret = 0;
+        for (var count = 1; count < 7; ++count)
+          for (var tableIndex = 0; tableIndex < 16; tableIndex += 1)
+            if (color[count] == table[tableIndex])
+              ret += tableIndex * Math.pow(16, 6 - count);
+        return ret;
+      }
+    }
+
+    // var mouse =
+    // {
+    //   x: 0,
+    //   y: 0,
+    //   click: new vec2(),
+    //   button: [],
+    //   clickFocus: -1,
+    //   focus: -1,
+    //   init: -1,
+    //   left: 0,
+    //   middle: 1,
+    //   right: 2,
+    //   update: function (x, y) {
+    //     this.x = x;
+    //     this.y = y;
+    //   }
+    // };
+    let mouse = DispatchEventHandler("mouse");
+    let keyboard = DispatchEventHandler("keyboard");
+    var sysTime = new Date();
+    var socket = 0;//new WebSocket("ws:localhost:8081");
+    var visuals = [];
+    var colliders = [];
+    var moveResist = 0.95;
+    var bgcolorRef = new color(255, 255, 255);
+    var screenInfo = new Scene();
+    var logicGateOffColor = "#FFFFFF";
+    var logicGateOnColor = "#AAAAFF";
+    var fontColor = "#5555FF";
+    var ImageCollection;//loadImage("crystal.png","Image/Desert.jpg","Image/fire1.png","Image/fire2.png");
+    var message = "";
+    var colorArray = ["#FFFFFF", "#AAAAFF", "#5555FF", "#A1A1A1"];
+
+    function LineVector(vector1X, vector1Y, vector2X, vector2Y) {
+      this.vector1 = new vec2(vector1X, vector1Y);
+      this.vector2 = new vec2(vector2X, vector2Y);
+      this.incline = (this.x1 - this.x2) == 0 ? 0 : (this.y1 - this.y2) / (this.x1 - this.x2);
+      this.xZy = this.y1 - (this.incline * this.x1);
+      this.yZx = this.incline == 0 ? null : -this.xZy / this.incline;
+      this.visible = true;
+
+      this.paint = function (ctx) {
+        ctx.beginPath();
+        ctx.moveTo(this.vector1.x, this.vector1.y);
+        ctx.lineTo(this.vector2, x, this.vector2.y);
+        ctx.closePath();
+        ctx.strokeStyle = "#000000";
+        ctx.stroke();
+      }
+
+      this.isCross = function (otherLine) {
+        if (this.incline == otherLine.incline && this.xZy == otherLine.xZy)
+          return true;
+        else if (this.incline == otherLine.incline && this.xZy != otherLine.xZy)
+          return false;
+
+        if (this.incline == 0) {
+          if (!this.xZy && Math.min(otherLine.x1, otherLine.x2) <= this.yZx && Math.max(otherLine.x1, otherLine.x2) >= this.yZx)
+            return true;
+          else if (!this.yZx && Math.min(otherLine.y1, otherLine.y2) <= this.xZy && Math.max(otherLine.y1, otherLine.y2) >= this.xZy)
+            return true;
+        }
+        if (otherLine.incline == 0) {
+          if (!this.xZy && Math.min(otherLine.x1, otherLine.x2) <= this.yZx && Math.max(otherLine.x1, otherLine.x2) >= this.yZx)
+            return true;
+          else if (!this.yZx && Math.min(otherLine.y1, otherLine.y2) <= this.xZy && Math.max(otherLine.y1, otherLine.y2) >= this.xZy)
+            return true;
+        }
+
+        solveX = (otherLine.xZy - this.xZy) / (this.incline - otherLine.incline);
+        commonXMin = Math.max(this.x1, otherLine.x1);
+        commonXMax = Math.min(this.x2, otherLine.x2);
+        if (commonXMin > commonXMax) {
+          swapTemp = commonXMax;
+          commonXMax = commonXMin;
+          commonXMin = swapTemp;
+        }
+        return commonXMin <= solveX && commonXMax >= solveX;
+      }
+
+      this.isCrossObject = function (inObject) {
+        avilValue = inObject.width;
+        yMin = min(this.y1, this.y2);
+        yMax = max(this.y1, this.y2);
+        xMin = min(this.x1, this.x2);
+        xMax = max(this.x1, this.x2);
+        if ((yMin < inObject.y && yMax > inObject.y) || (yMin < inObject.y + inObject.height && yMax > inObject.y + inObject.height) || (yMin < inObject.y && yMax > inObject.y + inObject.height))
+          if ((xMin < inObject.x && xMax > inObject.x) || (xMin < inObject.x + inObject.width && xMax > inObject.x + inObject.width) || (xMin < inObject.x && xMax > inObject.x + inObject.width))
+            return true;
+        return false;
+      }
+      return this;
+    }
+
+    window.oncontextmenu = function (event) {
+      return false;
+    }
+    mouse.onmousedown = function (event) {
+      console.log(event);
+      switch (event.button) {
+        case mouse.left:
+          connectLine.location.update(event.x, event.y);
+          connectLine.size.update(0, 0);
+          connectRect.location.update(event.x, event.y);
+          connectRect.size.update(0, 0);
+          var objectClicked = true; // except UI object
+          if (mouse.clickFocus > -1) {
+            objectClicked = false;
+            if (visuals[mouse.clickFocus].__proto__ instanceof Interface.Rect == false)
+              objectClicked = true;
+          }
+          if (objectClicked) {
+            connectRect.visible = true;
+            /*visuals.push( new bullet(ref.location.x+ref.size.x/2+Math.cos(atan)*ref.size.x,ref.location.y+ref.size.y/2+Math.sin(atan)*ref.size.y,
+             5,Math.cos(atan)*aF,Math.sin(atan)*aF) );*/
+          }
+          break;
+      }
+      mouse.click.update(event.x, event.y);
+      mouse.clickFocus = mouse.init;
+      for (var count = 0; count < visuals.length; ++count)
+        if (visuals[count].isclick != null)
+          if (visuals[count].isclick(event.x, event.y))
+            mouse.clickFocus = count;
+      if (mouse.clickFocus > -1 && visuals[mouse.clickFocus].click != null)
+        visuals[mouse.clickFocus].click(event.x, event.y);
+      var result = true;
+      if (window.next_onmousedown != null)
+        result = next_onmousedown(event);
+      return result;
+    }
+
+    mouse.onmouseup = function (event) {
+      if (mouse[mouse.left])
+        connectLine.visible = connectRect.visible = false;
+      if (mouse.clickFocus > -1 && visuals[mouse.clickFocus] != null && visuals[mouse.clickFocus].clicked != null)
+        visuals[mouse.clickFocus].clicked(mouse.click.x - event.x, mouse.click.y - event.y);
+      if (mouse.clickFocus < 0 && screenInfo.drag != null)
+        screenInfo.drag(event);
+      mouse.clickFocus = mouse.init;
+      var result = true;
+      if (mouse[mouse.left])
+        if (event.x != mouse.click.x && event.y != mouse.click.y)
+          selectedUnit = GetObjectsInRect(new vec2(main_camera.location.x - main_canvas.width / 2 + mouse.click.x, main_camera.location.y - main_canvas.height / 2 + mouse.click.y),
+            new vec2(mouse.x - mouse.click.x, mouse.y - mouse.click.y), colliders);
+      mouse[event.button] = false;
+      return result;
+    }
+
+    mouse.onmousemove = function (event) {
+      var objectIndex = -1;
+      for (var count = 0; count < visuals.length; ++count)
+        if (visuals[count].isclick != null)
+          if (visuals[count].isclick(event.x, event.y)) {
+            objectIndex = count;
+            if (visuals[count].enter != null && count != mouse.focus) {
+              if (mouse.focus > mouse.init && visuals[mouse.focus].leave != null)
+                visuals[mouse.focus].leave();
+              visuals[count].enter();
+              mouse.focus = count;
+            }
+          }
+      if (objectIndex < 0) {
+        if (mouse.focus > mouse.init && visuals[mouse.focus].leave != null)
+          visuals[mouse.focus].leave();
+        mouse.focus = mouse.init;
+      }
+      if (mouse.clickFocus > -1 && visuals[mouse.clickFocus].drag != null)
+        visuals[mouse.clickFocus].drag(event.movementX, event.movementY);
+      else if (mouse[mouse.middle]) {
+        var refLocation = main_camera.location || screenInfo;
+        refLocation.update(refLocation.x - event.x + mouse.x, refLocation.y - event.y + mouse.y);
+      }
+      var result = true;
+      if (window.next_onmousemove != null)
+        result = next_onmousemove(event);
+      return result;
+    }
+    function next_onmousemove(event) {
+      if (mouse[mouse.left]) {
+        //connectLine.size.update(event.x-curserDif-mouse.click.x,event.y-curserDif-mouse.click.y);
+        connectRect.size.update(event.x - mouse.click.x, event.y - mouse.click.y);
+      }
+      return true;
+    }
+
+    function next_onmousedown(event) {
+      if (mouse[mouse.right]) {
+        spreadCircle.active = true;
+        spreadCircle.location.update(mouse.x, mouse.y);
+        spreadCircle.current_radius = spreadCircle.min_radius;
+        var selectedUnit_length = selectedUnit.length;
+        for (var index = 0; index < selectedUnit_length; index += 1) {
+          selectedUnit[index].state = "move";
+          selectedUnit[index].moveTo = new vec2(main_camera.location.x - main_canvas.width / 2 + mouse.x,
+            main_camera.location.y - main_canvas.height / 2 + mouse.y);
+          //selectedUnit[index].velocity.indicate(selectedUnit[index].median.angle(selectedUnit[index].moveTo));
+        }
+      }
+      return false;
+    }
+
+    window.onmousewheel = function (event) {
+      //ctx.scale(e.wheelDeltaY/240+1,e.wheelDeltaY/240+1);
+    }
+
+    window.onresize = function () {
+      main_canvas.width = innerWidth;
+      main_canvas.height = innerHeight;
+    };
+
+    window.onload = function () {
+      window.onresize();
+      // var save_data = localStorage["save"];
+      // if (save_data != null)
+      //   eval(save_data);
+    }
+
+    window.onbeforeunload = function (event) {
+      /*
+      if(socket.readyState != 1)
+        socket.close();
+      */
+    }
+
+    window.onfocus = function (evenet) {
+
+    }
+
+    socket.onopen = function (event) {
+      //setInterval(syncupdate,60);
+    }
+    socket.onclose = function (event) {
+      //alert("closed");
+    }
+
+    socket.onmessage = function (event) {
+      if (event.data[0] == "$") {
+        eval(event.data.substring(1, event.data.length - 1).trim() + "  */");
+      }
+    }
+
+    function send(string) {
+      if (socket.readyState != 1)
+        return false;
+      socket.send(string + "/*  ");
+      return true;
+    }
+
+    function line(x1, y1, x2, y2) {
+      this.__proto__ = new Interface.Rect(x1, y1, x2, y2);
+      this.isclick = null;
+
+      this.paint = function (ctx) {
+        ctx.beginPath();
+        ctx.moveTo(this.location.x, this.location.y);
+        ctx.lineTo(this.location.x + this.size.x, this.location.y + this.size.y);
+        ctx.closePath();
+        ctx.strokeStyle = "#666666";
+        ctx.stroke();
+      }
+      return this;
+    }
+
+    function rect(x1, y1, x2, y2) {
+      this.__proto__ = new Interface.Rect(x1, y1, x2, y2);
+      this.isclick = null;
+
+      this.paint = function (ctx) {
+        ctx.beginPath();
+        ctx.strokeStyle = "#666666";
+        ctx.strokeRect(this.location.x, this.location.y, this.size.x, this.size.y);
+        ctx.closePath();
+      }
+      return this;
+    }
+
+    function reflection(object) {
+      for (attribute in object)
+        console.log(attribute);
+    }
+
+    function range(min, max, cur) {
+      var minimum = min;
+      var maximum = max;
+      var current = cur;
+      this.excessException = null;
+      this.underException = null;
+
+      Object.defineProperty(this, "min",
+        {
+          get: function () { return minimum; }
+        });
+      Object.defineProperty(this, "max",
+        {
+          get: function () { return maximum; }
+        });
+      Object.defineProperty(this, "value",
+        {
+          get: function () { return current; },
+          set: function (input) {
+            if (input < minimum) {
+              current = minimum;
+              if (this.underException != null)
+                this.underException();
+            }
+            else if (input > maximum) {
+              current = maximum;
+              if (this.excessException != null)
+                this.excessException();
+            }
+            else
+              current = input;
+            return this;
+          }
+        });
+    }
+
+    function decTohex(value) {
+      var table = "0123456789ABCDEF"
+      var ret = table[value % 16];
+      value = Math.floor(value / 16);
+      while (value >= 1) {
+        ret = table[value % 16] + ret;
+        value = Math.floor(value / 16);
+      }
+      return ret;
+    }
+
+    function keyCode2Char(code) {
+      var asciiTable = "                                                0123456789       abcdefghijklmnopqrstuvwxyz";
+      return asciiTable[code];
+    }
+
+    function Scene(x, y) {
+      this.location = new vec2(x, y);
+      this.base = null;
+      return this;
+    }
+
+    function logicCircuit(x, y, width, height) {
+      this.__proto__ = new Collider2D.Rect(x, y, width, height);
+      this.input = [];
+      this.boolean = false;
+      this.class = "logicGate";
+      this.state = "active";
+
+      this.oninsert = function () {
+        var index = logicCircuitArray.indexOf(this);
+        if (index == -1)
+          logicCircuitArray.push(this);
+      }
+
+      this.ondelete = function () {
+        var index = logicCircuitArray.indexOf(this);
+        if (index > -1)
+          logicCircuitArray.splice(index, 1);
+      }
+
+      this.prepare_paint = function (ctx) {
+        var location = cameraLocation(this);
+        var size = this.size;
+        var input_length = this.input.length;
+        for (var count = 0; count < input_length; ++count) {
+          var input_location = cameraLocation(this.input[count]);
+          ctx.beginPath();
+          ctx.moveTo(location.x + size.x / 2, location.y + size.y / 2);
+          ctx.lineTo(input_location.x + this.input[count].size.x / 2, input_location.y + this.input[count].size.y / 2);
+          ctx.closePath();
+          ctx.strokeStyle = "#444444";
+          ctx.stroke();
+        }
+      }
+      this.click = function (x, y) {
+        if (mouse[mouse.left]) {
+          connectRect.visible = false;
+          connectLine.visible = true;
+          connectLine.location.update(x, y);
+          connectLine.size.update(0, 0);
+        }
+      }
+      this.clicked = function (x, y) {
+        var temp = -1;
+        var findIdx = -1;
+        var visuals_length = visuals.length;
+        if (mouse[mouse.right]) {
+          for (var count = 0; count < visuals_length; ++count) {
+            if (visuals[count] == this || visuals[count].input == null)
+              continue;
+            findIdx = visuals[count].input.indexOf(this);
+            if (findIdx > -1)
+              visuals[count].input.splice(findIdx, 1);
+          }
+          this.state = "deleted";
+        }
+        for (var count = 0; count < visuals_length; ++count)
+          if (visuals[count].isclick != null)
+            if (visuals[count].isclick(mouse.x, mouse.y))
+              temp = count;
+        if (temp > -1)
+          if (mouse[mouse.left] && visuals[temp] != this && visuals[temp].class == "logicGate") {
+            findIdx = visuals[temp].input.indexOf(this);
+            if (findIdx > -1)
+              visuals[temp].input.splice(findIdx, 1);
+            else
+              visuals[temp].input.push(this);
+          }
+      }
+      this.drag = function (x, y) {
+        if (mouse[mouse.left]) {
+          connectLine.size.add(x, y);
+        }
+        if (mouse[mouse.middle]) {
+          this.location.x += x;
+          this.location.y += y;
+        }
+      }
+      this.collision = function (collider) {
+        return true;
+      }
+      return this;
+    }
+
+    function logicAnd(x, y, width, height) {
+      this.__proto__ = new logicCircuit(x, y, width, height);
+
+      this.update = function () {
+        if (this.input.length == 0) {
+          this.boolean = false;
+          return;
+        }
+        this.boolean = true;
+        var input_length = this.input.length;
+        for (var count = 0; count < input_length; count += 1)
+          this.boolean = this.boolean && this.input[count].boolean;
+      }
+
+      this.paint = function (ctx) {
+        var location = cameraLocation(this);
+        var size = this.size;
+
+        ctx.fillStyle = logicGateOffColor;
+        ctx.strokeStyle = "#000000";
+        ctx.fillRect(location.x, location.y, size.x, size.y);
+        ctx.strokeRect(location.x, location.y, size.x, size.y);
+
+        ctx.beginPath();
+        ctx.moveTo(location.x, location.y);
+        ctx.lineTo(location.x + size.x / 8, location.y + size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x + size.x, location.y);
+        ctx.lineTo(location.x + size.x - size.x / 8, location.y + size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x + size.x, location.y + size.y);
+        ctx.lineTo(location.x + size.x - size.x / 8, location.y + size.y - size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x, location.y + size.y);
+        ctx.lineTo(location.x + size.x / 8, location.y + size.y - size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.strokeRect(location.x + size.x / 8, location.y + size.y / 8, size.x - size.x / 4, size.y - size.y / 4);
+        if (this.boolean) {
+          ctx.fillStyle = logicGateOnColor;
+          ctx.fillRect(location.x + size.x / 8, location.y + size.y / 8, size.x - size.x / 4, size.y - size.y / 4);
+        }
+        ctx.fillStyle = fontColor;
+        ctx.font = "25px 돋움";
+        ctx.fillText("And", location.x + size.x / 6, location.y + size.y / 1.6);
+      }
+
+      this.toString = function () {
+        return "new logicAnd(" + this.location.x.toFixed(2) + "," + this.location.y.toFixed(2) + "," +
+          this.size.x.toFixed(2) + "," + this.size.y.toFixed(2) + ")";
+      }
+      return this;
+    }
+
+    function logicOR(x, y, width, height) {
+      this.__proto__ = new logicCircuit(x, y, width, height);
+
+      this.update = function () {
+        this.boolean = false;
+        var input_length = this.input.length;
+        for (count = 0; count < input_length; ++count)
+          this.boolean = this.boolean || this.input[count].boolean;
+      }
+
+      this.paint = function (ctx) {
+        var location = cameraLocation(this);
+        var size = this.size;
+
+        ctx.fillStyle = logicGateOffColor;
+        ctx.strokeStyle = "#000000";
+        ctx.fillRect(location.x, location.y, size.x, size.y);
+        ctx.strokeRect(location.x, location.y, size.x, size.y);
+
+        ctx.beginPath();
+        ctx.moveTo(location.x, location.y);
+        ctx.lineTo(location.x + size.x / 8, location.y + size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x + size.x, location.y);
+        ctx.lineTo(location.x + size.x - size.x / 8, location.y + size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x + size.x, location.y + size.y);
+        ctx.lineTo(location.x + size.x - size.x / 8, location.y + size.y - size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x, location.y + size.y);
+        ctx.lineTo(location.x + size.x / 8, location.y + size.y - size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.strokeRect(location.x + size.x / 8, location.y + size.y / 8, size.x - size.x / 4, size.y - size.y / 4);
+        if (this.boolean) {
+          ctx.fillStyle = logicGateOnColor;
+          ctx.fillRect(location.x + size.x / 8, location.y + size.y / 8, size.x - size.x / 4, size.y - size.y / 4);
+        }
+        ctx.fillStyle = fontColor;
+        ctx.font = "25px 돋움";
+        ctx.fillText("OR", location.x + size.x / 6, location.y + size.y / 1.6);
+      }
+      this.toString = function () {
+        return "new logicOR(" + this.location.x.toFixed(2) + "," + this.location.y.toFixed(2) + "," +
+          this.size.x.toFixed(2) + "," + this.size.y.toFixed(2) + ")";
+      }
+      return this;
+    }
+
+    function logicNot(x, y, width, height) {
+      this.__proto__ = new logicCircuit(x, y, width, height);
+      this.input.maximum = 1;
+
+      this.update = function () {
+        if (this.input.length == 0)
+          this.boolean = true;
+        else
+          this.boolean = !this.input[0].boolean;
+      }
+      this.paint = function (ctx) {
+        var location = cameraLocation(this);
+        var size = this.size;
+
+        ctx.fillStyle = logicGateOffColor;
+        ctx.strokeStyle = "#000000";
+        ctx.fillRect(location.x, location.y, size.x, size.y);
+        ctx.strokeRect(location.x, location.y, size.x, size.y);
+
+        ctx.beginPath();
+        ctx.moveTo(location.x, location.y);
+        ctx.lineTo(location.x + size.x / 8, location.y + size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x + size.x, location.y);
+        ctx.lineTo(location.x + size.x - size.x / 8, location.y + size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x + size.x, location.y + size.y);
+        ctx.lineTo(location.x + size.x - size.x / 8, location.y + size.y - size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x, location.y + size.y);
+        ctx.lineTo(location.x + size.x / 8, location.y + size.y - size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.strokeRect(location.x + size.x / 8, location.y + size.y / 8, size.x - size.x / 4, size.y - size.y / 4);
+        if (this.boolean) {
+          ctx.fillStyle = logicGateOnColor;
+          ctx.fillRect(location.x + size.x / 8, location.y + size.y / 8, size.x - size.x / 4, size.y - size.y / 4);
+        }
+        ctx.fillStyle = fontColor;
+        ctx.font = "25px 돋움";
+        ctx.fillText("Not", location.x + size.x / 6, location.y + size.y / 1.6);
+      }
+      this.toString = function () {
+        return "new logicNot(" + this.location.x.toFixed(2) + "," + this.location.y.toFixed(2) + "," +
+          this.size.x.toFixed(2) + "," + this.size.y.toFixed(2) + ")";
+      }
+      return this;
+    }
+
+    function pulse(x, y, width, height) {
+      this.__proto__ = new logicCircuit(x, y, width, height);
+      this.pulseupdate = 0;
+      this.timer = this.pulseupdate;
+
+      this.update = function () {
+        if (--this.timer <= 0 && this.pulseupdate != 0) {
+          this.boolean = !this.boolean;
+          this.timer = this.pulseupdate;
+        }
+        else if (this.pulseupdate == 0) {
+          this.boolean = false;
+        }
+      }
+
+      this.paint = function (ctx) {
+        var location = cameraLocation(this);
+        var size = this.size;
+
+        ctx.fillStyle = logicGateOffColor;
+        ctx.strokeStyle = "#000000";
+        ctx.fillRect(location.x, location.y, size.x, size.y);
+        ctx.strokeRect(location.x, location.y, size.x, size.y);
+
+        ctx.beginPath();
+        ctx.moveTo(location.x, location.y);
+        ctx.lineTo(location.x + size.x / 8, location.y + size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x + size.x, location.y);
+        ctx.lineTo(location.x + size.x - size.x / 8, location.y + size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x + size.x, location.y + size.y);
+        ctx.lineTo(location.x + size.x - size.x / 8, location.y + size.y - size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(location.x, location.y + size.y);
+        ctx.lineTo(location.x + size.x / 8, location.y + size.y - size.y / 8);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.strokeRect(location.x + size.x / 8, location.y + size.y / 8, size.x - size.x / 4, size.y - size.y / 4);
+        if (this.boolean) {
+          ctx.fillStyle = logicGateOnColor;
+          ctx.fillRect(location.x + size.x / 8, location.y + size.y / 8, size.x - size.x / 4, size.y - size.y / 4);
+        }
+
+        ctx.fillStyle = fontColor;
+        ctx.font = "40px 돋움";
+        ctx.fillText("P", location.x + size.x / 3, location.y + size.y / 1.8);
+        ctx.font = "25px 돋움";
+        ctx.fillText("(" + (this.pulseupdate == 0 ? "00" : this.pulseupdate) + ")", location.x + size.x / 6, location.y + size.y / 1.2);
+      }
+
+      this.clicked = function (x, y) {
+        var temp = -1;
+        var findIdx = -1;
+        if (mouse[mouse.right]) {
+          for (var count = 0; count < visuals.length; ++count) {
+            if (visuals[count] == this || visuals[count].input == null)
+              continue;
+            findIdx = visuals[count].input.indexOf(this);
+            if (findIdx > -1)
+              visuals[count].input.splice(findIdx, 1);
+          }
+          findIdx = visuals.indexOf(this);
+          visuals.splice(findIdx, 1);
+        }
+        for (var count = 0; count < visuals.length; ++count)
+          if (visuals[count].isclick != null)
+            if (visuals[count].isclick(mouse.x, mouse.y))
+              temp = count;
+        if (temp > -1)
+          if (mouse[mouse.left] && visuals[temp] != this && visuals[temp].class == "logicGate") {
+            findIdx = visuals[temp].input.indexOf(this);
+            if (findIdx > -1)
+              visuals[temp].input.splice(findIdx, 1);
+            else
+              visuals[temp].input.push(this);
+          }
+          else if (visuals[temp] == this && mouse[mouse.left]) {
+            this.pulseupdate = (this.pulseupdate + 10) % 100;
+          }
+      }
+      this.toString = function () {
+        return "new pulse(" + this.location.x.toFixed(2) + "," + this.location.y.toFixed(2) + "," +
+          this.size.x.toFixed(2) + "," + this.size.y.toFixed(2) + ")";
+      }
+      return this;
+    }
+
+    function checkBox(x, y, width, height) {
+      this.__proto__ = new logicCircuit(x, y, width, height);
+
+      this.update = function () {
+        var input_length = this.input.length;
+        for (var count = 0; count < input_length; count += 1)
+          this.boolean |= this.input[count].boolean;
+      }
+      this.paint = function (ctx) {
+        var location = cameraLocation(this);
+        var size = this.size;
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(location.x, location.y, size.x, size.y);
+        if (this.boolean) {
+          ctx.fillStyle = "#AAAAAA";
+          ctx.fillRect(location.x + size.x / 8, location.y + size.y / 8, size.x - size.x / 4, size.y - size.y / 4);
+        }
+      }
+      this.clicked = function (x, y) {
+        var temp = -1;
+        var findIdx = -1;
+        if (mouse[mouse.right]) {
+          for (var count = 0; count < visuals.length; ++count) {
+            if (visuals[count] == this || visuals[count].input == null)
+              continue;
+            findIdx = visuals[count].input.indexOf(this);
+            if (findIdx > -1)
+              visuals[count].input.splice(findIdx, 1);
+          }
+          findIdx = visuals.indexOf(this);
+          visuals.splice(findIdx, 1);
+        }
+        for (var count = 0; count < visuals.length; ++count)
+          if (visuals[count].isclick != null)
+            if (visuals[count].isclick(mouse.x, mouse.y))
+              temp = count;
+        if (temp > -1)
+          if (mouse[mouse.left] && visuals[temp] != this && visuals[temp].class == "logicGate") {
+            findIdx = visuals[temp].input.indexOf(this);
+            if (findIdx > -1)
+              visuals[temp].input.splice(findIdx, 1);
+            else
+              visuals[temp].input.push(this);
+          }
+          else if (visuals[temp] == this && mouse[mouse.left] && this.input.length == 0)
+            this.boolean = !this.boolean;
+      }
+      this.toString = function () {
+        return "new checkBox(" + this.location.x.toFixed(2) + "," + this.location.y.toFixed(2) + "," +
+          this.size.x.toFixed(2) + "," + this.size.y.toFixed(2) + ")";
+      }
+      return this;
+    }
+
+    function savelogicCircuit() {
+      var temp = [];
+      var save_data = "main_camera.location.update(" + main_camera.location.x.toFixed(2) + "," + main_camera.location.y.toFixed(2) + ");";
+      var size = visuals.length;
+      for (var count = 0; count < size; count += 1)
+        if (visuals[count].class == "logicGate")
+          temp.push(visuals[count]);
+      size = temp.length;
+      for (var count = 0; count < size; count += 1)
+        save_data += "visuals.push(" + temp[count] + ");";
+      for (var count = 0; count < size; count += 1) {
+        var input_size = temp[count].input.length;
+        if (input_size == 0)
+          continue;
+        save_data += "logicCircuitArray[" + count + "].input = Array.init(";
+        for (var index = 0; index < input_size; index += 1) {
+          save_data += "logicCircuitArray[" + logicCircuitArray.indexOf(temp[count].input[index]) + "]";
+          if (index < input_size - 1)
+            save_data += ",";
+        }
+        save_data += ");";
+      }
+      return save_data;
+    }
+
+    function clock(x, y, radius) {
+      this.__proto__ = new Interface.Rect(x, y, radius * 2, radius * 2);
+      this.radius = radius;
+      this.vertex = new Array(12);
+      this.time = sysTime;
+      this.state = "";
+
+      for (var count = 0; count < this.vertex.length; ++count)
+        this.vertex[count] = new vec2();
+
+      this.update = function () {
+        this.vertexUpdate();
+        this.time = sysTime;
+      }
+
+      this.vertexUpdate = function () {
+        var median = this.median;
+        for (var count = 0; count < this.vertex.length; ++count)
+          this.vertex[count].update(this.radius * Math.cos(Math.PI * count / this.vertex.length * 2) + median.x,
+            this.radius * Math.sin(Math.PI * count / this.vertex.length * 2) + median.y);
+      }
+
+      this.paint = function (ctx) {
+        ctx.beginPath();
+        ctx.moveTo(this.vertex[0].x, this.vertex[0].y);
+        for (var count = 1; count < this.vertex.length; ++count)
+          ctx.lineTo(this.vertex[count].x, this.vertex[count].y);
+        ctx.lineTo(this.vertex[0].x, this.vertex[0].y);
+        ctx.strokeStyle = "#000000";
+        ctx.fillStyle = "color.rgba(170,170,170,0.7)";
+        ctx.closePath();
+        ctx.stroke();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        seconds = this.time.getSeconds();
+        ctx.lineTo(this.radius / 1.4 * Math.cos(Math.PI * (seconds / 30 - 0.5)) + this.x, this.radius / 1.4 * Math.sin(Math.PI * (seconds / 30 - 0.5)) + this.y);
+        ctx.moveTo(this.x, this.y);
+        minutes = this.time.getMinutes();
+        ctx.lineTo(this.radius / 1.7 * Math.cos(Math.PI * (minutes / 30 - 0.5)) + this.x, this.radius / 1.7 * Math.sin(Math.PI * (minutes / 30 - 0.5)) + this.y);
+        ctx.moveTo(this.x, this.y);
+        hour = this.time.getHours();
+        ctx.lineTo(this.radius / 2 * Math.cos(Math.PI * (hour / 30 - 0.5 + minutes / 60 / 2)) + this.x, this.radius / 2 * Math.sin(Math.PI * (hour / 30 - 0.5 + minutes / 60 / 2)) + this.y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      this.drag = function (x, y) {
+        if (mouse[mouse.middle]) {
+          this.location.x += x;
+          this.location.y += y;
+        }
+      }
+      return this;
+    }
+
+    function unit(x, y, width, height) {
+      this.__proto__ = new Collider2D.Rect(x, y, width, height);
+      this.states = new Collection.Stack("none");
+      this.owner = "player";
+      this.notApply = false;
+      this.mess = 0;
+      this.hp = new range(1, 50, 50);
+      this.hp.base = this;
+      this.bulletCount = new range(0, 30, 30);
+      this.class = "unit";
+      var fireDelay_Default = 10;
+      var fireDelay = 0;
+      var speed = 10;
+
+      Object.defineProperty(this, "state",
+        {
+          get: function () { return this.states.top(); },
+          set: function (input) {
+            if (input != this.states.top())
+              this.states.push(input);
+          }
+        });
+
+      this.hp.underException = function () { this.base.state = "deleted"; }
+
+      this.paint = function (ctx) {
+        var location = cameraLocation(this);
+        ctx.fillStyle = "#BAAAAA";
+        ctx.strokeStyle = "#000000";
+        ctx.beginPath();
+        ctx.ellipse(location.x + this.size.x / 2, location.y + this.size.y / 2, this.size.x / 2, this.size.y / 2, 0, Math.PI * 2, 0);
+        ctx.fill();
+        ctx.stroke();
+        ctx.closePath();
+        ctx.beginPath();
+        ctx.fillStyle = "#FFFFFF";
+        if (this.state == "reloading")
+          ctx.fillText("reload", location.x + this.size.x / 3.5, location.y + this.size.y / 1.7);
+        else
+          ctx.fillText(this.hp.value, location.x + this.size.x / 3.5, location.y + this.size.y / 1.7);
+        ctx.fill();
+        ctx.closePath();
+      }
+
+      this.update = function () {
+        switch (this.state) {
+          case "attack":
+            var target = null;
+            var median = this.median;
+            var targetList = GetObjectsInRect(new vec2(median.x - 500, median.y - 500), new vec2(1000, 1000), colliders);
+            var targetList_Size = targetList.length;
+            for (var count = 0; count < targetList_Size; count += 1) {
+              if (this.target == targetList[count]) {
+                target = this.target;
+                break;
+              }
+              if (targetList[count].owner != this.owner && targetList[count].class == "unit")
+                target = targetList[count];
+            }
+            fireDelay -= 1;
+            if (fireDelay <= 0) {
+              if (target != null) {
+                this.AttackToTarget(target);
+                fireDelay = fireDelay_Default;
+              }
+            }
+            if (target == null) {
+              targetList = GetObjectsInRect(new vec2(median.x - 3000, median.y - 3000), new vec2(6000, 6000), colliders);
+              targetList_Size = targetList.length;
+              for (var count = 0; count < targetList_Size; count += 1)
+                if (targetList[count].owner != this.owner && targetList[count].class == "unit")
+                  target = targetList[count];
+              this.target = target;
+              if (this.target != null)
+                this.moveTo = target.median;
+              this.state = "patrol";
+            }
+            break;
+          case "move":
+            var velocity = speed || 1;
+            var median = this.median;
+            if (this.moveTo != null) {
+              if (median.equals(this.moveTo, 10)) {
+                this.velocity.update(0, 0);
+                this.states.pop();
+                this.moveTo = null;
+                return;
+              }
+              var angle = Math.atan2(this.moveTo.y - median.y, this.moveTo.x - median.x);
+              var temp = vec2.indicate(angle, velocity);
+              this.velocity.update(temp.x, temp.y);
+            }
+            break;
+          case "patrol":
+            var median = this.median;
+            var targetList = GetObjectsInRect(new vec2(median.x - 500, median.y - 500), new vec2(1000, 1000), colliders);
+            var target = null;
+            var targetList_Size = targetList.length;
+            for (var count = 0; count < targetList_Size; count += 1)
+              if (targetList[count].owner != this.owner && targetList[count].class == "unit")
+                target = targetList[count];
+            if (target != null)
+              this.state = "attack";
+            else {
+              var velocity = speed || 1;
+              if (this.moveTo != null) {
+                if (this.median.equals(this.moveTo, 10)) {
+                  this.velocity.update(0, 0);
+                  this.states.pop();
+                  this.moveTo = null;
+                  return;
+                }
+                var angle = Math.atan2(this.moveTo.y - median.y, this.moveTo.x - median.x);
+                var temp = vec2.indicate(angle, velocity);
+                this.velocity.update(temp.x, temp.y);
+              }
+            }
+            break;
+        }
+      }
+
+      this.AttackToTarget = function (target) {
+        var angle = this.angle(target);
+        var shotingBullet = new bullet(0, 0, 5, 0, 0);
+        shotingBullet.velocity.indicate(angle, 20);
+        shotingBullet.location.indicate(angle, (this.size.x + this.size.y) / 2).add(this.location.x, this.location.y).add(this.size.x / 2, this.size.y / 2);
+        visuals.push(shotingBullet);
+      }
+
+      this.physicalUpdate = function (frameInterval) {
+        var sigmaResist = (1 - Math.pow(moveResist, frameInterval + 1)) / (1 - moveResist);
+        var resist = Math.pow(moveResist, frameInterval + 1);
+        this.location.add(this.velocity.x * sigmaResist, this.velocity.y * sigmaResist);
+        this.velocity.mul(resist);
+        if (this.notApply)
+          return;
+      }
+
+      this.click = function (x, y) {
+        if (mouse[mouse.left]) {
+          selectedUnit.clear();
+          selectedUnit.push(this);
+        }
+      }
+
+      this.collision = function (collider) {
+        if (collider.class == "bullet") {
+          if (this.state != "move")
+            this.state = "move";
+          this.moveTo = this.median.clone().add(vec2.indicate(Math.random() * 2 * Math.PI, 100));
+        }
+        if (collider.class == "unit") {
+          this.hp.value -= ((Math.abs(collider.velocity.x) + Math.abs(collider.velocity.y)) / 8).toFixed(0);
+          collider.hp.value -= ((Math.abs(this.velocity.x) + Math.abs(this.velocity.y)) / 8).toFixed(0);
+        }
+        collider.velocity.add(this.velocity.div(2));
+        this.velocity.reverse();
+        this.moveAngle += 2;
+        return true;
+      }
+      return this;
+    }
+
+    function bullet(x, y, radius, velocityX, velocityY) {
+      this.__proto__ = new Collider2D.Rect(x, y, radius * 2, radius * 2, velocityX, velocityY)
+      this.radius = radius;
+      this.state = "";
+      this.notApply = false;
+      this.visible = true;
+      this.timeout = 5000;
+      this.generateTime = Date.now();
+      this.class = "bullet";
+
+      this.paint = function (ctx) {
+        var location = cameraLocation(this);
+        if (location.x < 0 || location.x > main_canvas.width || location.y < 0 || location.y > main_canvas.height)
+          return;
+        ctx.beginPath();
+        ctx.arc(location.x, location.y, radius, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fillStyle = "#D9D9D9";
+        ctx.fill();
+      }
+
+      this.update = function () {
+        if (Date.now() - this.generateTime > this.timeout || Math.abs(this.velocity.x) + Math.abs(this.velocity.y) < 0.2)
+          this.state = "deleted";
+      }
+
+      this.physicalUpdate = function (frameInterval) {
+        var sigmaResist = (1 - Math.pow(moveResist, frameInterval + 1)) / (1 - moveResist);
+        var resist = Math.pow(moveResist, frameInterval + 1);
+        this.location.add(new vec2(this.velocity.x * sigmaResist, this.velocity.y * sigmaResist));
+        //this.velocity.mul(resist);
+      }
+
+      this.click = function (x, y) {
+
+      }
+
+      this.collision = function (collider) {
+        //collider.velocity.add(this.velocity.div(2));
+        if (collider.class == "bullet")
+          return false;
+        this.state = "deleted";
+        if (collider.hp != null)
+          collider.hp.value -= 1;
+        return true;
+      }
+      return this;
+    }
+
+    function observer(x, y) {
+      this.location = new vec2(x, y);
+      this.velocity = new vec2();
+      this.capture = null;
+      this.captureRange = new range(0, 0.5, 0.35);
+      this.state = "";
+
+      this.update = function () {
+        this.location.add(this.velocity);
+        this.velocity.mul(moveResist, moveResist);
+        var range = this.captureRange;
+        if (this.capture != null) {
+          var location = this.capture.median;
+          if (this.location.x < location.x - main_canvas.width * range.value)
+            this.location.x = location.x - main_canvas.width * range.value;
+          else if (this.location.x > location.x + main_canvas.width * range.value)
+            this.location.x = location.x + main_canvas.width * range.value;
+          if (this.location.y < location.y - main_canvas.height * range.value)
+            this.location.y = location.y - main_canvas.height * range.value;
+          else if (this.location.y > location.y + main_canvas.height * range.value)
+            this.location.y = location.y + main_canvas.height * range.value;
+        }
+      }
+      return this;
+    }
+
+    function wall(x, y, width, height) {
+      this.__proto__ = new Collider2D.Rect(x, y, width, height);
+      this.angle = 0;
+      this.moveAngle = 0;
+      this.state = "";
+      this.class = "wall";
+      this.notApply = true;
+
+      this.paint = function (ctx) {
+        var location = cameraLocation(this);
+        var size = this.size;
+        ctx.fillStyle = "#333333";
+        ctx.fillRect(location.x, location.y, size.x, size.y);
+      }
+
+      this.collision = function (collider) {
+        return true;
+      }
+      return this;
+    }
+
+    function SpriteImage(source, clipX, clipY, clipLength, updateupdate) {
+      this.src = source;
+      this.clipX = clipX || 0;
+      this.clipY = clipY || 0;
+      this.clipLength = clipLength || 0;
+      this.clipIndex = 0;
+      this.updateupdate = updateupdate || Infinity;
+      this.updateLoop = 0;
+
+      this.update = function () {
+        if (++this.updateLoop >= this.updateupdate) {
+          this.clipIndex = (this.clipIndex + 1) % this.clipLength;
+          this.updateLoop = 0;
+        }
+      }
+
+      this.nextFrame = function () {
+        this.clipIndex = (this.clipIndex + 1) % this.clipLength;
+      }
+
+      this.prevFrame = function () {
+        this.clipIndex = (this.clipLength + this.clipIndex - 1) % this.clipLength;
+      }
+
+    }
+
+    fire.call = 0;
+    function fire(x, y, width, height, velocityX, velocityY) {
+      fire.call += 1;
+      this.__proto__ = new Collider2D.Rect(x, y, width, height, velocityX, velocityY);
+      this.Image = new SpriteImage(ImageCollection[fire.call % 2 + 1], 125, 200, 6, 7);
+      this.state = "";
+      this.mess = 0;
+      this.hp = new range(1, 20, 20);
+      this.hp.base = this;
+      this.bulletCount = new range(0, 30, 30);
+
+      this.update = function () {
+        this.Image.update();
+        switch (this.state) {
+          case "reload":
+            this.state = "reloading";
+            this.mess = 50;
+            break;
+          case "reloading":
+            this.mess -= 1;
+            if (this.mess <= 0) {
+              this.bulletCount.value = this.bulletCount.max;
+              this.state = "";
+            }
+            break;
+        }
+      }
+      this.drag = function (x, y) {
+        if (mouse[mouse.middle]) {
+          this.location.add(x, y);
+        }
+      }
+      this.clicked = function (x, y) {
+        if (x == 0 && y == 0)
+          return;
+        if (this.notApply)
+          return;
+        if (mouse[mouse.left]) {
+
+        }
+      }
+      this.paint = function (ctx) {
+        var Image = this.Image;
+        var location = cameraLocation(this);
+        ctx.fillStyle = "#FFFFFF";
+        ctx.drawImage(this.Image.src, Image.clipIndex * Image.clipX, 0, Image.clipX, Image.clipY, location.x, location.y, this.size.x, this.size.y);
+      }
+      this.physicalUpdate = function () {
+        this.location.add(this.velocity);
+        this.velocity.mul(moveResist);
+      }
+      this.collision = function (collider) {
+        collider.velocity.add(this.velocity.div(2));
+        this.velocity.add(collider.velocity.x / 2, collider.velocity.y / 2);
+        collider.velocity.update(-collider.velocity.x / 5, -collider.velocity.y / 5);
+        this.moveAngle += 2;
+      }
+      return this;
+    }
+
+    function Controller(base) {
+      this.base = base;
+    }
+
+    function GetObjectsInRect(location, size, objects) {
+      var temp = [];
+      var objects_length = objects.length;
+      for (var count = 0; count < objects_length; count += 1) {
+        var object_median = objects[count].median;
+        if (Math.abs(location.x + size.x / 2 - object_median.x) < Math.abs(size.x / 2) + Math.abs(objects[count].size.x / 2) &&
+          Math.abs(location.y + size.y / 2 - object_median.y) < Math.abs(size.y / 2) + Math.abs(objects[count].size.y / 2))
+          temp.push(objects[count]);
+      }
+      return temp;
+    }
+
+  </script>
+
+</head>
+<body>
+    <canvas id="canvas" width=100 height=100>no support canvas</canvas>
+    <script language="javaScript" defer>
+      var main_canvas = document.getElementById("canvas");
+      var connectLine = new line(0, 0, 0, 0);
+      var connectRect = new rect(0, 0, 0, 0);
+      var spreadCircle = new Interface.spreadCircle(0, 0, 0, 20, 2);
+      var ctx = main_canvas.getContext("2d");
+      var main_camera = new observer();
+      var logicCircuitArray = [];
+      var selectedUnit = [];
+      if (ctx != null)
+        initialize();
+      function initialize() {
+        document.bgColor = color.rgb(80, 80, 80);
+        main_canvas.bgColor = color.rgb(160, 160, 160);
+        setTimeout(gameLoop, 0);
+        requestAnimationFrame(function () {
+          ctx.fillStyle = main_canvas.bgColor;
+          ctx.fillRect(0, 0, main_canvas.width, main_canvas.height);
+          if (main_camera != null) {
+            main_camera.update();
+            var location = main_camera.location;
+            screenInfo.location.x = location.x - main_canvas.width / 2;
+            screenInfo.location.y = location.y - main_canvas.height / 2;
+          }
+          var visuals_length = visuals.length;
+          for (var count = 0; count < visuals_length; count += 1)
+            if (visuals[count].prepare_paint != null && visuals[count].active && visuals[count].visible)
+              visuals[count].prepare_paint(ctx);
+          for (var count = 0; count < visuals_length; count += 1)
+            if (visuals[count].paint != null && visuals[count].active && visuals[count].visible)
+              visuals[count].paint(ctx);
+          requestAnimationFrame(arguments.callee);
+        });
+        connectLine.visible = false;
+        connectRect.visible = false;
+        spreadCircle.active = false;
+        visuals.push(connectLine);
+        visuals.push(connectRect);
+        visuals.push(spreadCircle);
+        strokeBool = new checkBox(30, 150 + 0, 30, 30);
+        /* for(cnt=0;cnt<10000;++cnt)
+          visuals.push(new dotBox(300+Math.floor(cnt/50)*25,300+(cnt%50)*25,25)); */
+        //visuals.push(new Interface.Form(10,200,200,400));
+
+        //visuals.push(new unit(500,600,30,0,0));
+        //visuals.push(new fire(200,200,100,100));
+        //visuals.push(new fire(300,200,100,100));
+        //visuals.push(new crystal(400,400,69*1.1,80*1.1));
+        visuals.push(new wall(100, 0, 2300, 100, 0, 0));
+        visuals.push(new wall(0, 100, 100, 2300, 0, 0));
+        visuals.push(new wall(100, 2400, 2400, 100, 0, 0));
+        visuals.push(new wall(2400, 100, 100, 2400, 0, 0));
+        /*
+        visuals.push(new unit(1000,1000,50,50));
+        visuals.push(new unit(500,500,50,50)).owner = "1";
+        visuals.push(new unit(1200,500,50,50)).owner = "2";
+        visuals.push(new unit(500,1200,50,50)).owner = "3";
+        visuals.push(new unit(1200,1200,50,50)).owner = "4";
+      
+        colliders[5].state = "attack";
+        colliders[0].state = "attack";
+        colliders[6].state = "attack";
+        colliders[7].state = "attack";
+        colliders[8].state = "attack"; 
+        selectedUnit.push(colliders[0]); */
+        //visuals.push(new Character(300,300,100,100));
+        //main_camera.capture = colliders[0];
+        //main_camera = null;
+        var barChange = function () { main_canvas.bgColor = bgcolorRef.value; }
+        visuals.push(new Interface.bar(10, 15 + 0, 200, 35, bgcolorRef.R, "R", true)).change = barChange;
+        visuals.push(new Interface.bar(10, 60 + 0, 200, 35, bgcolorRef.G, "G", true)).change = barChange;
+        visuals.push(new Interface.bar(10, 105 + 0, 200, 35, bgcolorRef.B, "B", true)).change = barChange;
+        //visuals.push(new Interface.bar(10,150+0,200,35,colliders[0].bulletCount,"bullet",false));
+        visuals.push(new Interface.button(10, 150, 100, 50, "저장")).click = function () {
+          localStorage["save"] = savelogicCircuit();
+          console.log("saved");
+        };
+        //visuals.push(tt);
+        //visuals.push(new clock(100,250,50));
+        //visuals.push(strokeBool);
+        //colliders.push(new ellipse(500,400,100,400,0,0));
+        //colliders.push(new unit(500,700,60,0,0));
+        other = colliders[1];
+        //colliders.push(new ellipse(500,300,100,200,0,0));
+        //colliders.push( new rectangle(200,500,100,100,0,0) );
+        //camera = colliders[0];
+        //screenInfo.location.x = -camera.x + main_canvas.width/2;
+        //screenInfo.location.y = -camera.y + main_canvas.height/2;
+        //visuals.push(new rectangle(0,1400,4000,1000,0,0) );
+        //colliders.push(new spriteImage(500,500,500,500,0,0));
+      }
+      function gameLoop() {
+        var begin = Date.now();
+        for (var keyCode = 0; keyCode < 256; ++keyCode)
+          if (keyboard[keyCode]) {
+            {
+              var tempSpeed = 10;
+              switch (keyCode) {
+                case 13:
+
+                  break;
+                case 32:
+
+                  break;
+                case 82:
+
+                  break;
+                case 65:
+                  var size = selectedUnit.length;
+                  for (var count = 0; count < size; count += 1)
+                    selectedUnit[count].state = "attack";
+                  break;
+                case 68:
+
+                  break;
+                case 87:
+
+                  break;
+                case 83:
+
+                  break;
+                case 37:
+                  main_camera.velocity.add(-tempSpeed, 0);
+                  break;
+                case 38:
+                  main_camera.velocity.add(0, -tempSpeed);
+                  break;
+                case 39:
+                  main_camera.velocity.add(tempSpeed, 0);
+                  break;
+                case 40:
+                  main_camera.velocity.add(0, tempSpeed);
+                  break;
+                default:
+
+                  break;
+              }
+            }
+          }
+        var visuals_length = visuals.length;
+        for (var count = 0; count < visuals_length; count += 1)
+          if (visuals[count].active && visuals[count].update != null)
+            visuals[count].update();
+        for (var count = visuals.length - 1; count >= 0; count -= 1)
+          if (visuals[count].state == "deleted")
+            visuals.splice(count);
+        var colliders_length = colliders.length;
+        for (var count = 0; count < colliders_length; count += 1) {
+          //colliders[count].velocity.y += 10;
+          if (colliders[count].active == false)
+            continue;
+          if (colliders[count].physicalUpdate != null) {
+            if (colliders[count].prev.equals(colliders[count].location, 0) == false)
+              colliders[count].prev = colliders[count].location.clone();
+            colliders[count].physicalUpdate(0);
+          }
+          for (var compIndex = 0; compIndex < colliders_length; ++compIndex)
+            if (count != compIndex && colliders[count].iscollision != null)
+              if (colliders[count].iscollision(colliders[compIndex])) {
+                if (colliders[compIndex].collision(colliders[count]))
+                  colliders[compIndex].location = colliders[compIndex].prev;
+                if (colliders[count].collision(colliders[compIndex]))
+                  colliders[count].location = colliders[count].prev;
+              }
+        }
+        var finish = Date.now();
+        gameLoop.frameInterval = finish - begin > 30 ? finish - begin - 30 : 0;
+        setTimeout(gameLoop, 30 - gameLoop.frameInterval);
+      }
+
+      function paintUpdateLoop() {
+        ctx.fillStyle = main_canvas.bgColor;
+        ctx.fillRect(0, 0, main_canvas.width, main_canvas.height);
+        if (main_camera != null) {
+          main_camera.update();
+          var location = main_camera.location;
+          screenInfo.location.x = location.x - main_canvas.width / 2;
+          screenInfo.location.y = location.y - main_canvas.height / 2;
+        }
+        var visuals_length = visuals.length;
+        for (var count = 0; count < visuals_length; count += 1)
+          if (visuals[count].prepare_paint != null && visuals[count].active && visuals[count].visible)
+            visuals[count].prepare_paint(ctx);
+        for (var count = 0; count < visuals_length; count += 1)
+          if (visuals[count].paint != null && visuals[count].active && visuals[count].visible)
+            visuals[count].paint(ctx);
+        requestAnimationFrame(arguments.callee);
+      }
+      var testCount = 1;
+      keyboard.onkeydown = function (e) {
+        switch (e.keyCode) {
+          case 32:
+            if (selectedUnit.length > 0)
+              main_camera.location.update(selectedUnit[0].location.x, selectedUnit[0].location.y);
+            break;
+          case 82:
+            if (e.ctrlKey)
+              return true;
+        }
+      }
+      keyboard.onkeyup = function (e) {
+        switch (e.keyCode) {
+          case 49:
+            visuals.push(new checkBox(mouse.x - 15 + screenInfo.location.x, mouse.y - 15 + screenInfo.location.y, 30, 30));
+            break;
+          case 50:
+            visuals.push(new logicOR(mouse.x - 37.5 + screenInfo.location.x, mouse.y - 37.5 + screenInfo.location.y, 75, 75));
+            break;
+          case 51:
+            visuals.push(new logicAnd(mouse.x - 37.5 + screenInfo.location.x, mouse.y - 37.5 + screenInfo.location.y, 75, 75));
+            break;
+          case 52:
+            visuals.push(new logicNot(mouse.x - 37.5 + screenInfo.location.x, mouse.y - 37.5 + screenInfo.location.y, 75, 75));
+            break;
+          case 53:
+            visuals.push(new pulse(mouse.x - 37.5 + screenInfo.location.x, mouse.y - 37.5 + screenInfo.location.y, 75, 75));
+            break;
+          case 54:
+            visuals.push(new unit(mouse.x + screenInfo.location.x, mouse.y + screenInfo.location.y, 50, 50, 0, 0)).owner = testCount++;
+            break;
+          case 32:
+            //tempSpeed = 2;
+            break;
+          case 37:
+            main_camera.velocity.x = 0;
+            break;
+          case 38:
+            main_camera.velocity.y = 0;
+            break;
+          case 39:
+            main_camera.velocity.x = 0;
+            break;
+          case 40:
+            main_camera.velocity.y = 0;
+            break;
+        }
+        return true;
+      }
+      /*
+      if(gameLoop.keyDelay>0 )
+          break;
+        if( temp.bulletCount.value <= 0)
+          break;
+        if(temp.state == "reloading")
+          break;
+        gameLoop.keyDelay = coolTime;
+        temp.bulletCount.value -= 1;
+        if(temp != null)
+          send("$visuals.push( new bullet(collider.x-60,collider.y,5,-50,0) );");
+          visuals.push( new bullet(temp.location.x+temp.size.x/2-temp.size.x-5,temp.location.y+temp.size.y/2,5,-50,0) );
+      */
+    </script>
+</body>
+</html>

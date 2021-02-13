@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Open CAD</title>
+    <style type="text/css">
+        body {
+            margin: 0px;
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body>
+    <label style="orientation:vertical;" text="open"></label>
+    <canvas id="view">No support canvas</canvas>
+    <script language="javaScript" defer>
+
+        function vec2(x, y) { return {x : x, y : y}; }
+        function vec3(x, y, z) { return { x: x, y: y, z: z }; }
+        class object {
+            constructor() {
+                this.location = vec3(0, 0, 0);
+                this.size = vec3(0, 0, 0);
+                this.angle = vec3(0, 0, 0);
+            }
+
+            moveFront(movement) {
+                this.location.x += Math.cos(this.angle.x) * movement;
+                this.location.z += Math.sin(this.angle.z) * movement;
+            }
+        }
+
+        function cube(lx, ly, lz, sx, sy, sz) {
+            var temp = new object();
+            temp.location.x = lx;
+            temp.location.y = ly;
+            temp.location.z = lz;
+            temp.size.x = sx;
+            temp.size.y = sy;
+            temp.size.z = sz;
+            return temp;
+        }
+
+        function getVertexCube(ic) {
+            let x = ic.location.x;
+            let y = ic.location.y;
+            let z = ic.location.z;
+            let width = ic.size.x;
+            let height = ic.size.y;
+            let depth = ic.size.z;
+            return [
+                vec3(x - width / 2, y - height / 2, z - depth / 2),
+                vec3(x - width / 2, y - height / 2, z + depth / 2),
+                vec3(x + width / 2, y - height / 2, z + depth / 2),
+                vec3(x + width / 2, y - height / 2, z - depth / 2),
+                vec3(x + width / 2, y + height / 2, z - depth / 2),
+                vec3(x + width / 2, y + height / 2, z + depth / 2),
+                vec3(x - width / 2, y + height / 2, z + depth / 2),
+                vec3(x - width / 2, y + height / 2, z - depth / 2)];
+        }
+
+        function projection(camera, vertex) {
+            return vec2((vertex.x - camera.location.x) / (vertex.z - camera.location.z) + canvas.width / 2,
+                (vertex.y - camera.location.y) / (vertex.z - camera.location.z) + canvas.height / 2);
+        }
+
+        let canvas = document.getElementById("view");
+        let context = canvas.getContext("2d");
+
+        let camera = new object();
+        let cubes = [cube(0, 0, 0.1, 20, 20, 20)];
+
+        if (context != null) {
+            requestAnimationFrame(function () {
+                context.fillStyle = "#FFF";
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                context.strokeStyle = "#000";
+                for (var count = 0; count < cubes.length; ++count) {
+                    let vertexs = getVertexCube(cubes[count]);
+                    context.beginPath();
+                    for (var index = 0; index < vertexs.length; ++index) {
+                        let realPoint = projection(camera, vertexs[index]);
+                        // console.log(realPoint);
+                        if (index == 0)
+                            context.moveTo(realPoint.x, realPoint.y);
+                        else
+                            context.lineTo(realPoint.x, realPoint.y);
+                    }
+                    context.closePath();
+                    context.stroke();
+                }
+
+                requestAnimationFrame(arguments.callee);
+            });
+
+            canvas.width = innerWidth;
+            canvas.height = innerHeight;
+
+            window.addEventListener("resize", function (e) {
+                canvas.width = innerWidth;
+                canvas.height = innerHeight;
+            });
+
+            window.addEventListener("keydown", function (e) {
+                switch (e.key.toLowerCase()) {
+                    case "w":
+                        camera.location.z += 0.1;
+                        break;
+                    case "s":
+                        camera.location.z -= 0.1;
+                        break;
+                    case "a":
+                        camera.location.x -= 0.1;
+                        break;
+                    case "d":
+                        camera.location.x += 0.1;
+                        break;
+                }
+            });
+
+            window.addEventListener("keyup", function (e) {
+                console.log(e);
+            });
+
+            canvas.addEventListener("mousedown", function (e) {
+                console.log(e);
+            });
+
+            canvas.addEventListener("mousemove", function (e) {
+                // camera.x = e.offsetX;
+                // camera.y = e.offsetY;
+            });
+
+            canvas.addEventListener("mouseup", function (e) {
+                console.log(e);
+            });
+        }
+    </script>
+</body>
+
+</html>
